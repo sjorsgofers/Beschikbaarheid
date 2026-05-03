@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beschikbaarheid doorgeven</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 16px 16px 80px; color: #1f2937; background: #f9fafb; }
+  h1 { font-size: 1.5rem; margin: 0 0 16px; }
+  h2 { font-size: 1.1rem; margin: 28px 0 4px; }
+  p.hint { color: #6b7280; font-size: 0.9rem; margin: 4px 0 12px; }
+  .card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+  .name-row { display: flex; gap: 8px; align-items: center; }
+  .name-row label { font-weight: 500; }
+  .name-row input { flex: 1; padding: 8px 10px; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 6px; }
+  .day-row { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+  .day-row:last-child { border-bottom: 0; }
+  .day-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .day-label { font-weight: 500; }
+  .day-sub { font-size: 0.8rem; color: #9ca3af; }
+  .slots { display: flex; flex-wrap: wrap; gap: 6px; }
+  .slot { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; cursor: pointer; user-select: none; font-size: 0.9rem; background: white; }
+  .slot input { margin: 0; cursor: pointer; }
+  .slot.early { border-style: dashed; }
+  .slot.disabled { opacity: 0.4; cursor: not-allowed; }
+  .slot.checked { background: #2563eb; color: white; border-color: #2563eb; }
+  .slot.checked.early { background: #7c3aed; border-color: #7c3aed; }
+  button { padding: 9px 14px; font-size: 0.95rem; border: 0; border-radius: 6px; background: #2563eb; color: white; cursor: pointer; font-weight: 500; }
+  button:hover { background: #1d4ed8; }
+  button.secondary { background: #6b7280; }
+  button.secondary:hover { background: #4b5563; }
+  button.ghost { background: transparent; color: #6b7280; padding: 4px 8px; font-size: 0.8rem; }
+  button.ghost:hover { background: #f3f4f6; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { margin-top: 8px; font-size: 0.9rem; min-height: 1.2em; }
+  .status.error { color: #dc2626; }
+  .status.ok { color: #16a34a; }
+  .add-date-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  .add-date-row input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem; }
+  .day-row.override { background: #fff7ed; border-radius: 6px; padding: 10px; margin: 4px -10px; border-bottom: 1px solid #fed7aa; }
+  .badge { display: inline-block; font-size: 0.7rem; padding: 2px 6px; border-radius: 999px; background: #fed7aa; color: #9a3412; margin-left: 6px; }
+  .config-warn { background: #fef3c7; border: 1px solid #fcd34d; padding: 10px 14px; border-radius: 8px; color: #78350f; font-size: 0.9rem; margin-bottom: 16px; }
+  .actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<h1>Mijn beschikbaarheid</h1>
+
+<div id="config-warn" class="config-warn" style="display:none;">
+  <strong>Configuratie nodig:</strong> de Apps Script URL is nog niet ingesteld bovenin <code>index.html</code>.
+</div>
+
+<div class="card">
+  <div class="name-row">
+    <label for="name">Naam:</label>
+    <input id="name" type="text" placeholder="Vul je naam in" autocomplete="off">
+    <button class="secondary" id="load-btn" type="button">Laden</button>
+  </div>
+  <div class="status" id="load-status"></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">Standaard beschikbaarheid (elke week)</h2>
+  <p class="hint">Vink aan op welke weekdagen en tijdvakken je standaard beschikbaar bent. Geldt automatisch voor alle toekomstige dagen totdat je het wijzigt. Het tijdvak <strong>10:00</strong> is alleen mogelijk samen met een ander tijdvak.</p>
+  <div id="recurring"></div>
+  <div class="actions">
+    <button id="save-recurring" type="button">Standaard opslaan</button>
+    <button class="ghost" id="clear-recurring" type="button">Standaard leegmaken</button>
+  </div>
+  <div class="status" id="recurring-status"></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">Komende dagen</h2>
+  <p class="hint">Wijk hier af van je standaard voor een specifieke dag (bijv. afwezig op een vrije dag, of juist beschikbaar buiten je standaardpatroon). Oranje rijen zijn afwijkingen.</p>
+  <div id="dates"></div>
+  <div class="add-date-row">
+    <label>Extra datum: <input type="date" id="add-date"></label>
+    <button class="secondary" id="add-date-btn" type="button">Toevoegen</button>
+  </div>
+  <div class="actions">
+    <button id="save-dates" type="button">Dagen opslaan</button>
+  </div>
+  <div class="status" id="dates-status"></div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG — vul hier je Apps Script Web App URL in (zie deploy-instructies)
+const APPS_SCRIPT_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
+// ============================================================
+
+const SLOTS = ['10:00', '13:00', '16:00', '17:00', '18:00'];
+const WEEKDAYS = ['Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag','Zondag'];
+const DAYS_AHEAD = 28;
+
+// state
+let recurring = {}; // { 0: ['13:00','16:00'], ... } 0=mon..6=sun
+let overrides = {}; // { 'YYYY-MM-DD': ['13:00', ...] } — per-date override
+let extraDates = []; // user-added dates beyond default window
+
+// ---------- helpers ----------
+function pad(n){ return n < 10 ? '0' + n : '' + n; }
+function isoDate(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+function parseIso(s){ const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
+function weekdayMonFirst(d){ return (d.getDay() + 6) % 7; }
+function todayIso(){ const t = new Date(); t.setHours(0,0,0,0); return isoDate(t); }
+function nextNDates(n){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    out.push(isoDate(d));
+  }
+  return out;
+}
+function formatDateNl(iso){
+  const d = parseIso(iso);
+  return WEEKDAYS[weekdayMonFirst(d)] + ' ' + d.getDate() + ' ' + ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'][d.getMonth()];
+}
+// 10:00 mag alleen aan staan als minstens één van de andere vinkjes aan staat
+function normalizeSlots(arr){
+  const set = new Set(arr.filter(s => SLOTS.includes(s)));
+  const hasOther = [...set].some(s => s !== '10:00');
+  if (!hasOther) set.delete('10:00');
+  return SLOTS.filter(s => set.has(s));
+}
+
+// ---------- pill rendering ----------
+function buildSlotPill(slot, checked, disabled, onChange){
+  const label = document.createElement('label');
+  label.className = 'slot' + (slot === '10:00' ? ' early' : '') + (checked ? ' checked' : '') + (disabled ? ' disabled' : '');
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = checked;
+  cb.disabled = disabled;
+  cb.addEventListener('change', () => onChange(cb.checked));
+  label.appendChild(cb);
+  label.appendChild(document.createTextNode(slot));
+  return label;
+}
+
+function buildSlotsRow(currentSlots, onUpdate){
+  const wrap = document.createElement('div');
+  wrap.className = 'slots';
+  const cur = new Set(currentSlots);
+  const hasOther = [...cur].some(s => s !== '10:00');
+  SLOTS.forEach(slot => {
+    const checked = cur.has(slot);
+    const disabled = (slot === '10:00' && !hasOther && !checked);
+    const pill = buildSlotPill(slot, checked, disabled, (newVal) => {
+      const next = new Set(cur);
+      if (newVal) next.add(slot); else next.delete(slot);
+      onUpdate(normalizeSlots([...next]));
+    });
+    wrap.appendChild(pill);
+  });
+  return wrap;
+}
+
+// ---------- recurring section ----------
+function renderRecurring(){
+  const root = document.getElementById('recurring');
+  root.innerHTML = '';
+  for (let i = 0; i < 7; i++) {
+    const row = document.createElement('div');
+    row.className = 'day-row';
+    const header = document.createElement('div');
+    header.className = 'day-header';
+    const label = document.createElement('div');
+    label.className = 'day-label';
+    label.textContent = WEEKDAYS[i];
+    header.appendChild(label);
+    row.appendChild(header);
+    const slotsRow = buildSlotsRow(recurring[i] || [], (newSlots) => {
+      if (newSlots.length === 0) delete recurring[i]; else recurring[i] = newSlots;
+      renderRecurring();
+    });
+    row.appendChild(slotsRow);
+    root.appendChild(row);
+  }
+}
+
+// ---------- per-date section ----------
+function effectiveSlotsForDate(iso){
+  if (overrides.hasOwnProperty(iso)) return overrides[iso];
+  const wd = weekdayMonFirst(parseIso(iso));
+  return recurring[wd] || [];
+}
+
+function getDatesToShow(){
+  const set = new Set([...nextNDates(DAYS_AHEAD), ...extraDates, ...Object.keys(overrides)]);
+  const today = todayIso();
+  return [...set].filter(d => d >= today).sort();
+}
+
+function renderDates(){
+  const root = document.getElementById('dates');
+  root.innerHTML = '';
+  const dates = getDatesToShow();
+  dates.forEach(iso => {
+    const isOverride = overrides.hasOwnProperty(iso);
+    const row = document.createElement('div');
+    row.className = 'day-row' + (isOverride ? ' override' : '');
+    const header = document.createElement('div');
+    header.className = 'day-header';
+    const label = document.createElement('div');
+    label.className = 'day-label';
+    label.textContent = formatDateNl(iso);
+    if (isOverride) {
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = 'afwijking';
+      label.appendChild(badge);
+    } else {
+      const sub = document.createElement('span');
+      sub.className = 'day-sub';
+      sub.textContent = ' — volgt standaard';
+      label.appendChild(sub);
+    }
+    header.appendChild(label);
+    if (isOverride) {
+      const resetBtn = document.createElement('button');
+      resetBtn.className = 'ghost';
+      resetBtn.type = 'button';
+      resetBtn.textContent = '↺ terug naar standaard';
+      resetBtn.addEventListener('click', () => {
+        delete overrides[iso];
+        renderDates();
+      });
+      header.appendChild(resetBtn);
+    }
+    row.appendChild(header);
+    const currentSlots = effectiveSlotsForDate(iso);
+    const slotsRow = buildSlotsRow(currentSlots, (newSlots) => {
+      // any change converts to override
+      overrides[iso] = newSlots;
+      renderDates();
+    });
+    row.appendChild(slotsRow);
+    root.appendChild(row);
+  });
+}
+
+// ---------- networking ----------
+function setStatus(id, msg, kind){
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+function checkConfig(){
+  if (APPS_SCRIPT_URL.includes('PASTE_YOUR')) {
+    document.getElementById('config-warn').style.display = 'block';
+    return false;
+  }
+  return true;
+}
+
+async function loadForName(name){
+  if (!checkConfig()) return;
+  if (!name) { setStatus('load-status', 'Vul eerst je naam in.', 'error'); return; }
+  setStatus('load-status', 'Laden...', '');
+  try {
+    const url = APPS_SCRIPT_URL + '?action=load&name=' + encodeURIComponent(name);
+    const res = await fetch(url, { method: 'GET' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'onbekende fout');
+    recurring = data.recurring || {};
+    overrides = data.overrides || {};
+    // numeric keys come back as strings via JSON; normalize
+    const normRec = {};
+    Object.keys(recurring).forEach(k => normRec[+k] = recurring[k]);
+    recurring = normRec;
+    renderRecurring();
+    renderDates();
+    setStatus('load-status', data.found ? 'Bestaande gegevens geladen.' : 'Nieuwe naam — vul vrij in.', 'ok');
+  } catch (err) {
+    setStatus('load-status', 'Laden mislukt: ' + err.message, 'error');
+  }
+}
+
+async function saveRecurring(){
+  if (!checkConfig()) return;
+  const name = document.getElementById('name').value.trim();
+  if (!name) { setStatus('recurring-status', 'Vul eerst je naam in.', 'error'); return; }
+  setStatus('recurring-status', 'Opslaan...', '');
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveRecurring', name, recurring })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'onbekende fout');
+    setStatus('recurring-status', 'Opgeslagen ✓', 'ok');
+  } catch (err) {
+    setStatus('recurring-status', 'Mislukt: ' + err.message, 'error');
+  }
+}
+
+async function saveDates(){
+  if (!checkConfig()) return;
+  const name = document.getElementById('name').value.trim();
+  if (!name) { setStatus('dates-status', 'Vul eerst je naam in.', 'error'); return; }
+  setStatus('dates-status', 'Opslaan...', '');
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveDates', name, overrides })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'onbekende fout');
+    setStatus('dates-status', 'Opgeslagen ✓', 'ok');
+  } catch (err) {
+    setStatus('dates-status', 'Mislukt: ' + err.message, 'error');
+  }
+}
+
+// ---------- wiring ----------
+document.addEventListener('DOMContentLoaded', () => {
+  checkConfig();
+
+  const nameInput = document.getElementById('name');
+  const stored = localStorage.getItem('beschikbaarheid_naam');
+  if (stored) nameInput.value = stored;
+
+  nameInput.addEventListener('change', () => {
+    localStorage.setItem('beschikbaarheid_naam', nameInput.value.trim());
+  });
+
+  document.getElementById('load-btn').addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    localStorage.setItem('beschikbaarheid_naam', name);
+    loadForName(name);
+  });
+
+  document.getElementById('save-recurring').addEventListener('click', saveRecurring);
+  document.getElementById('clear-recurring').addEventListener('click', () => {
+    recurring = {};
+    renderRecurring();
+  });
+  document.getElementById('save-dates').addEventListener('click', saveDates);
+
+  document.getElementById('add-date-btn').addEventListener('click', () => {
+    const v = document.getElementById('add-date').value;
+    if (!v) return;
+    if (v < todayIso()) { setStatus('dates-status', 'Datum moet vandaag of later zijn.', 'error'); return; }
+    if (!extraDates.includes(v)) extraDates.push(v);
+    setStatus('dates-status', '', '');
+    renderDates();
+  });
+
+  // initial render
+  renderRecurring();
+  renderDates();
+
+  // auto-load if a name is already remembered
+  if (stored) loadForName(stored);
+});
+</script>
+
+</body>
+</html>
